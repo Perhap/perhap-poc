@@ -1,0 +1,2 @@
+defmodule Cassandra do
+end
