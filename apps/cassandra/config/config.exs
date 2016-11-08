@@ -28,3 +28,9 @@ use Mix.Config
 # here (which is why it is important to import them last).
 #
 #     import_config "#{Mix.env}.exs"
+
+config :cassandra, 
+  host: System.get_env("CASSANDRA_HOST") || "127.0.0.1",
+  pass: System.get_env("CASSANDRA_PASS") || "",
+  keyspace: System.get_env("CASSANDRA_KEYSPACE") || "perhap",
+  table: System.get_env("CASSANDRA_TABLE") || "events"
