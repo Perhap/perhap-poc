@@ -13,6 +13,9 @@
 # No beam files
 *.beam
 
+# Don't need the mix.lock file
+mix.lock
+
 # No swap files
 *.swp
 
