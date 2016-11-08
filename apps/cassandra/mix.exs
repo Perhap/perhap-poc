@@ -35,6 +35,9 @@ defmodule Cassandra.Mixfile do
   #
   # Type "mix help deps" for more examples and options
   defp deps do
-    [{:cqerl, github: "matehat/cqerl", branch: "master"}]
+    [
+      {:cqerl, github: "matehat/cqerl", branch: "master"},
+      {:poison, "~> 3.0"}
+    ]
   end
 end

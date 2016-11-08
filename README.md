@@ -11,19 +11,19 @@ perhap is strictly an immutable event store. It accepts new events, and responds
 New events are organized hierarchically using the following structure:
 
   * Domain
-    * Aggregate root / Entity
-      * Event type
+    * Event type
+      * Aggregate root / Entity
         * Event
 
-Any event can be added using arbitrary data at all levels, i.e. a user of the event store may record an event of a new type, for a new aggregate, even for a new domain, without first creating the domain, aggregate, or event type.
+Any event can be added using arbitrary data at all levels, i.e. a user of the event store may record an event of a new type, for a new entity, even for a new domain, without first creating the domain, entity, or event type.
 
-The API for adding an event over HTTP is to post event data to a URL specifying the domain, aggregate, and event type.
+The API for adding an event over HTTP is to post event data to a URL specifying the domain, event type, and entity.
 
-`curl -X POST https://perhap-server/[domain]/[aggregate]/[event-type]/ -d "[event data]"`
+`curl -X POST https://perhap-server/[domain]/[event-type]/[entity]/ -d "[event data]"`
 
 Example:
 
-`curl -X POST https://perhap-server/communications/59535c06-79c4-4499-bfcc-c695aaebf491/click -d '{"URI": "http://..."}'`
+`curl -X POST https://perhap-server/communications/click/59535c06-79c4-4499-bfcc-c695aaebf491 -d '{"URI": "http://..."}'`
 
 
 status codes...
@@ -34,15 +34,15 @@ Querying events follows the same hierarchy as creating new events, but uses a GE
 
 Retrieving events:
 
-* Retrieve all events of a given type: `curl -X GET https://perhap-server/[domain]/[aggregate]/[event-type]`
-* Retrieve all events for a given aggregate: `curl -X GET https://perhap-server/[domain]/[aggregate]`
+* Retrieve all events for a given entity: `curl -X GET https://perhap-server/[domain]/[event-type]/[entity]`
+* Retrieve all events of a given event type: `curl -X GET https://perhap-server/[domain]/[event-type]`
 * Retrieve all events within a given domain: `curl -X GET https://perhap-server/[domain]`
 X Retrieve a specific event: `curl -X GET https://perhap-server/[event-id]`
 
 Retrieving lists of keys:
 
-* List event-type keys: `curl -X GET https://perhap-server/[domain]/[aggregate]/[event-type]/keys`
-* List aggregate keys: `curl -X GET https://perhap-server/[domain]/[aggregate]/keys`
+* List entity keys: `curl -X GET https://perhap-server/[domain]/[event-type]/[entity]/keys`
+* List event-type keys: `curl -X GET https://perhap-server/[domain]/[event-type]/keys`
 * List domain keys: `curl -X GET https://perhap-server/[domain]/keys`
 
 Filtering results:
