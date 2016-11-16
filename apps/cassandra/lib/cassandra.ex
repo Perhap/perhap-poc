@@ -1,7 +1,7 @@
 defmodule Cassandra do
+  require Cqlerl.Structs
   require Logger
   require Poison
-  require Cassandra.Query
 
  def init do
     {:ok, client} = :cqerl.get_client({})
@@ -21,12 +21,15 @@ defmodule Cassandra do
     updated_criteria = make_uuid(criteria)
     :cqerl.run_query(
       client,
-      Cassandra.Query.cql_query(
+      Cqlerl.Structs.cql_query(
         statement: make_select_statement(table, updated_criteria),
         values: updated_criteria
       )
     ) |> handle_result
   end
+
+  def keyspace, do: Application.get_env(:cassandra, :keyspace)
+  def table, do: Application.get_env(:cassandra, :keyspace) <> "." <> Application.get_env(:cassandra, :table)
 
   def make_uuid criteria do
     if Map.has_key?(criteria, :entity) do
@@ -34,9 +37,6 @@ defmodule Cassandra do
     else criteria
     end
   end
-
-  def keyspace, do: Application.get_env(:cassandra, :keyspace)
-  def table, do: Application.get_env(:cassandra, :keyspace) <> "." <> Application.get_env(:cassandra, :table)
 
   def create_keyspace keyspace do
     """
@@ -79,7 +79,8 @@ defmodule Cassandra do
     rows = :cqerl.all_rows result
     Enum.map rows, fn row ->
       Keyword.merge(row, [event_id: :uuid.uuid_to_string(row[:event_id])]) |>
-      Keyword.merge([entity: :uuid.uuid_to_string(row[:entity])])
+      Keyword.merge([entity: :uuid.uuid_to_string(row[:entity])]) |>
+      Keyword.merge([event: Poison.decode!(row[:event])])
     end
   end
 
