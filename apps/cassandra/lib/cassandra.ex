@@ -1,6 +1,42 @@
 defmodule Cassandra do
   require Logger
   require Poison
+  require Cassandra.Query
+
+ def init do
+    {:ok, client} = :cqerl.get_client({})
+    [
+      :cqerl.run_query(client, create_keyspace(keyspace)) |> handle_result,
+      :cqerl.run_query(client, create_events_table(table)) |> handle_result
+    ]
+  end
+
+  def publish %{domain: domain, entity: entity, type: type, event: event} do
+    {:ok, client} = :cqerl.get_client({})
+    :cqerl.run_query(client, insert_query(table, domain, entity, type, event)) |> handle_result
+  end
+
+  def query criteria do
+    {:ok, client} = :cqerl.get_client({})
+    updated_criteria = make_uuid(criteria)
+    :cqerl.run_query(
+      client,
+      Cassandra.Query.cql_query(
+        statement: make_select_statement(table, updated_criteria),
+        values: updated_criteria
+      )
+    ) |> handle_result
+  end
+
+  def make_uuid criteria do
+    if Map.has_key?(criteria, :entity) do
+      Map.merge(criteria, %{ entity: :uuid.string_to_uuid(criteria[:entity]) })
+    else criteria
+    end
+  end
+
+  def keyspace, do: Application.get_env(:cassandra, :keyspace)
+  def table, do: Application.get_env(:cassandra, :keyspace) <> "." <> Application.get_env(:cassandra, :table)
 
   def create_keyspace keyspace do
     """
@@ -29,34 +65,32 @@ defmodule Cassandra do
     """
   end
 
-  def init do
-    {:ok, client} = :cqerl.get_client({})
-    keyspace_query = :cqerl.send_query(client, create_keyspace(Application.get_env(:cassandra, :keyspace)))
-    receive do
-      {:result, keyspace_query, :void} -> :ok
-      {:result, keyspace_query, result} -> Logger.info "Cassandra keyspace setup: #{inspect result}"
-      result -> Logger.warn "Cassandra error: #{inspect result}"
-    end
-    table_query = :cqerl.send_query(client, create_events_table(Application.get_env(:cassandra, :keyspace) <> "." <> Application.get_env(:cassandra, :table)))
-    receive do
-      {:result, table_query, :void} -> :ok
-      {:result, table_query, result} -> Logger.info "Cassandra table setup: #{inspect result}"
-      result -> Logger.warn "Cassandra error: #{inspect result}"
+  def make_select_statement table, criteria do
+    "SELECT event_id, domain, type, entity, dateOf(event_id) AS unixtime, event FROM #{table} WHERE " <>
+    ( Enum.map(criteria, fn {k, _} -> "#{k}=?" end) |> Enum.join(" AND ") ) <>
+    ";"
+  end
+
+  def handle_result {:ok, :void} do
+    {:ok, :void}
+  end
+
+  def handle_result {:ok, {:cql_result, _column_spec, _result, _query, _ref} = result } do
+    rows = :cqerl.all_rows result
+    Enum.map rows, fn row ->
+      Keyword.merge(row, [event_id: :uuid.uuid_to_string(row[:event_id])]) |>
+      Keyword.merge([entity: :uuid.uuid_to_string(row[:entity])])
     end
   end
 
-  def publish %{domain: domain, entity: entity, type: type, event: event} do
-    table = Application.get_env(:cassandra, :keyspace) <> "." <> Application.get_env(:cassandra, :table)
-    {:ok, client} = :cqerl.get_client({})
-    Logger.debug insert_query(table, domain, entity, type, event)
-    publish_query = :cqerl.send_query(client, insert_query(table, domain, entity, type, event))
-    receive do
-      {:result, publish_query, :void} -> :ok
-      {:result, publish_query, result} -> Logger.debug "Cassandra insert query: #{inspect result}"
-      result -> Logger.warn "Cassandra error: #{inspect result}"
-    end
+  def handle_result {:ok, result} do
+    Logger.debug "Cassandra message: #{inspect result}"
+    {:ok, result}
   end
 
-  def query event do
+  def handle_result result do
+    Logger.warn "Cassandra error: #{inspect result}"
+    {:error, result}
   end
+
 end
