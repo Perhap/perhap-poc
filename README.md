@@ -6,25 +6,25 @@ perhap is an event store described within a domain driven design and functional 
 
 perhap is strictly an immutable event store. It accepts new events, and responds to queries about existing events.
 
-### New events
+Events are immutable, organized hierarchically using the following structure:
 
-New events are organized hierarchically using the following structure:
-
+* Realm
   * Domain
     * Aggregate root / Entity
       * Event type
         * Event
 
+### New events
+
 Any event can be added using arbitrary data at all levels, i.e. a user of the event store may record an event of a new type, for a new entity, even for a new domain, without first creating the domain, entity, or event type.
 
 The API for adding an event over HTTP is to post event data to a URL specifying the domain, event type, and entity.
 
-`curl -X POST https://perhap-server/[domain]/[entity]/[event_type] -d "[event data]"`
+`curl -X POST https://perhap-server/[realm]/[domain]/[entity]/[event_type] -d "[event data]"`
 
 Example:
 
-`curl -X POST https://perhap-server/communications/59535c06-79c4-4499-bfcc-c695aaebf491/click -d '{"URI": "http://..."}'`
-
+`curl -X POST https://perhap-server/performance/communications/59535c06-79c4-4499-bfcc-c695aaebf491/click -d '{"URI": "http://..."}'`
 
 status codes...
 
@@ -34,21 +34,18 @@ Querying events follows the same hierarchy as creating new events, but uses a GE
 
 Retrieving events:
 
-* Retrieve all events for a given entity: `curl -X GET https://perhap-server/[domain]/[entity]`
-* Retrieve all events within a given domain: `curl -X GET https://perhap-server/[domain]`
-* Retrieve a specific event: `curl -X GET https://perhap-server/[event-id]`
+* Retrieve all events for a given entity: `curl -X GET https://perhap-server/[realm]/[domain]/[entity]`
+* Retrieve a specific event: `curl -X GET https://perhap-server/[realm]/[domain]/[event-id]`
+* Retrieve all events within a given domain: `curl -X GET https://perhap-server/[realm]/[domain]`
 
 Retrieving lists of keys:
 
-? List all domains: `curl -X GET https://perhap-server/keys`
-? List all entities within a domain: `curl -X GET https://perhap-server/[domain]/keys`
+* List all domains: `curl -X GET https://perhap-server/[realm]/keys`
+* List all entities within a domain: `curl -X GET https://perhap-server/[realm]/[domain]/keys`
 
 Filtering results:
 
-* Retrieve events occuring after a known event: `?following=[event-id]`
-? Retrieve events before a given time: `?before=[unixtime]`
-? Retrieve events after a given time: `?after=[unixtime]`
-? Retrieve events between two times: `?after=[unixtime]&before=[unixtime]`
+* Retrieve all events occuring after a known event: `curl -X GET https://perhap-server/[realm]/[domain]/[entity]?following=[event-id]`
 
 status codes...
 

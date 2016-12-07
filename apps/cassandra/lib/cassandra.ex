@@ -1,45 +1,73 @@
 defmodule Cassandra do
   require Cqlerl.Structs
   require Logger
-  require Poison
+  import Poison, only: [encode!: 1, decode!: 1]
 
- def init do
-    {:ok, client} = :cqerl.get_client({})
-    [
-      :cqerl.run_query(client, create_keyspace) |> handle_result,
-      :cqerl.run_query(client, create_events_table) |> handle_result,
-      :cqerl.run_query(client, create_entity_index) |> handle_result
-    ]
+  def nodes do
+    Map.get( ( Application.get_env(:cassandra, :nodes) |> decode! ), "nodes")
+    |> Enum.map( fn node -> { node["ip"], node["port"] } end )
   end
 
-  def publish %{domain: domain, entity: entity, type: type, event: event} do
-    {:ok, client} = :cqerl.get_client({})
-    :cqerl.run_query(client, insert_query(domain, entity, type, event)) |> handle_result
+  def creds do
+    { :auth,
+      { Application.get_env(:cassandra, :auth_handler),
+        [ { Application.get_env(:cassandra, :user), Application.get_env(:cassandra, :pass) } ] 
+      }
+    }
+  end
+
+  def keyspace, do: Application.get_env(:cassandra, :keyspace)
+
+  def table, do: Application.get_env(:cassandra, :keyspace) <> "." <> Application.get_env(:cassandra, :table)
+
+ def init do
+   :ok = :cqerl_cluster.add_nodes( nodes, [ creds ] )
+   {:ok, client} = :cqerl.get_client()
+   [
+     :cqerl.run_query(client, create_keyspace) |> handle_result,
+     :cqerl.run_query(client, create_events_table) |> handle_result,
+     :cqerl.run_query(client, create_entity_index) |> handle_result
+   ]
+  end
+
+  def publish %{realm: realm, domain: domain, entity: entity, type: type, event: event} do
+    {:ok, client} = :cqerl.get_client()
+    :cqerl.run_query(client, insert_query(realm, domain, entity, type, event)) |> handle_result
   end
 
   def query criteria do
-    {:ok, client} = :cqerl.get_client({})
+    {:ok, client} = :cqerl.get_client()
     :cqerl.run_query(
       client,
       Cqlerl.Structs.cql_query(
         statement: make_select_statement(criteria),
-        values: make_where(criteria)
+        values: make_where(criteria),
+        page_size: 1000
       )
     ) |> handle_result
   end
 
-  def get_domain_keys do
-    {:ok, client} = :cqerl.get_client({})
-    :cqerl.run_query(client, make_domain_keys_query) |> handle_result
+  def get_domain_keys %{realm: realm} do
+    {:ok, client} = :cqerl.get_client()
+    :cqerl.run_query(client, make_domain_keys_query(realm)) |>
+      handle_result |>
+      deduplicate
   end
 
-  def get_entity_keys domain do
-    {:ok, client} = :cqerl.get_client({})
-    :cqerl.run_query(client, make_entity_keys_query(domain)) |> handle_result
+  def get_entity_keys %{realm: realm, domain: domain} do
+    {:ok, client} = :cqerl.get_client()
+    :cqerl.run_query(client, make_entity_keys_query(realm, domain)) |>
+    handle_result |>
+    deduplicate |>
+    Enum.map(fn entity -> :uuid.uuid_to_string entity end)
   end
 
-  def keyspace, do: Application.get_env(:cassandra, :keyspace)
-  def table, do: Application.get_env(:cassandra, :keyspace) <> "." <> Application.get_env(:cassandra, :table)
+  def deduplicate l do
+    l |> 
+      Enum.uniq |>
+      Enum.map(fn x -> Keyword.values x end) |>
+      List.flatten
+  end
 
   def create_keyspace do
     """
@@ -51,13 +79,14 @@ defmodule Cassandra do
   def create_events_table do
     """
     CREATE TABLE IF NOT EXISTS #{table}
-      ( domain varchar,
+      ( realm varchar,
+        domain varchar,
         event_id timeuuid,
         entity uuid,
         type varchar,
         event text,
-        PRIMARY KEY (domain, event_id, entity))
-        WITH CLUSTERING ORDER BY (event_id DESC);
+        PRIMARY KEY (realm, domain, event_id, entity))
+        WITH CLUSTERING ORDER BY (domain ASC, event_id DESC);
     """
   end
 
@@ -73,15 +102,15 @@ defmodule Cassandra do
     """
   end
 
-  def insert_query domain, entity, type, event do
+  def insert_query realm, domain, entity, type, event do
     """
-    INSERT INTO #{table}(domain, type, entity, event_id, event)
-      VALUES ('#{domain}', '#{type}', #{entity}, now(), '#{Poison.encode!(event)}');
+    INSERT INTO #{table}(realm, domain, type, entity, event_id, event)
+      VALUES ('#{realm}', '#{domain}', '#{type}', #{entity}, now(), '#{encode!(event)}');
     """
   end
 
   def make_select_statement criteria do
-    "SELECT event_id, domain, type, entity, dateOf(event_id) AS unixtime, event FROM #{table} WHERE " <>
+    "SELECT event_id, realm, domain, type, entity, dateOf(event_id) AS unixtime, event FROM #{table} WHERE " <>
     ( Enum.map(criteria, fn {k, _} -> 
       case k do
         :following -> "event_id > ?"
@@ -98,15 +127,15 @@ defmodule Cassandra do
     end
   end
 
-  def make_domain_keys_query do
+  def make_domain_keys_query realm do
     """
-    SELECT DISTINCT domain FROM #{table};
+    SELECT domain FROM #{table} WHERE realm = '#{realm}';
     """
   end
 
-  def make_entity_keys_query domain do
+  def make_entity_keys_query realm, domain do
     """
-    SELECT DISTINCT entity FROM #{table} WHERE domain = '#{domain}';
+    SELECT entity FROM #{table} WHERE realm = '#{realm}' AND domain = '#{domain}';
     """
   end
 
@@ -120,9 +149,9 @@ defmodule Cassandra do
         Enum.map rows, fn row -> 
           Keyword.merge(row, [event_id: :uuid.uuid_to_string(row[:event_id])]) |>
           Keyword.merge([entity: :uuid.uuid_to_string(row[:entity])]) |>
-          Keyword.merge([event: Poison.decode!(row[:event])])
+          Keyword.merge([event: decode!(row[:event])])
         end
-      Enum.member?(columns, :domain) ->
+      True ->
         rows
     end
   end
