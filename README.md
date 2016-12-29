@@ -20,11 +20,11 @@ Any event can be added using arbitrary data at all levels, i.e. a user of the ev
 
 The API for adding an event over HTTP is to post event data to a URL specifying the domain, event type, and entity.
 
-`curl -X POST https://perhap-server/[realm]/[domain]/[entity]/[event_type] -d "[event data]"`
+`curl -X POST https://perhap-server/[realm]/[domain]/[entity]/[event_type] -d '{"event": [event data]}'`
 
 Example:
 
-`curl -X POST https://perhap-server/performance/communications/59535c06-79c4-4499-bfcc-c695aaebf491/click -d '{"URI": "http://..."}'`
+`curl -X POST https://perhap-server/performance/communications/59535c06-79c4-4499-bfcc-c695aaebf491/click -d '{"event": {"URI": "http://..."}}'`
 
 status codes...
 

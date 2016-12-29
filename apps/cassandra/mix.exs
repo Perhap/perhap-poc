@@ -37,7 +37,7 @@ defmodule Cassandra.Mixfile do
   defp deps do
     [
       {:cqerl, github: "matehat/cqerl", branch: "master"},
-      {:poison, "~> 3.0"}
+      {:poison, "~> 2.0"}
     ]
   end
 end
