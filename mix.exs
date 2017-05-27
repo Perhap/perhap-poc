@@ -20,7 +20,7 @@ defmodule Perhap.Mixfile do
   #
   # Dependencies listed here are available only for this project
   # and cannot be accessed from applications inside the apps folder
-  defp deps do
+  defp deps() do
     []
   end
 end
